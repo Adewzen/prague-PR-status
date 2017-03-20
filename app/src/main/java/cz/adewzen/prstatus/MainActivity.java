@@ -3,6 +3,7 @@ package cz.adewzen.prstatus;
 import android.app.ProgressDialog;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.database.Cursor;
 import android.os.AsyncTask;
 import android.os.StrictMode;
@@ -39,7 +40,7 @@ public class MainActivity extends AppCompatActivity {
     private ProgressDialog pDialog;
     private ListView lv;
 
-    public static List<Parkoviste>  parkoviste = new ArrayList<Parkoviste>();
+    public static HashMap<String, Parkoviste>  parkoviste = new HashMap<String, Parkoviste>();
     //private static  ArrayList<HashMap<String,String> list = new ArrayList<Parkoviste>();
     ArrayList<HashMap<String, String>> list;
 
@@ -65,6 +66,13 @@ public class MainActivity extends AppCompatActivity {
 
         new GetData().execute();
 
+        Intent mServiceIntent = new Intent(this.getApplicationContext(), GetDataService.class);
+        getAppContext().startActivity(mServiceIntent);
+
+
+
+        load_settings(parkoviste);
+
         lv.setClickable(true);
         lv.setOnItemClickListener(new AdapterView.OnItemClickListener() {
 
@@ -73,9 +81,7 @@ public class MainActivity extends AppCompatActivity {
                 HashMap<String, String> c = (HashMap<String, String>)parent.getAdapter().getItem(position);
                 Log.i("clicked on: ", c.get("name") + " - " + c.get("parkid"));
                 Intent intent = new Intent(MainActivity.getAppContext(), ParkDetailActivity.class);
-
                 intent.putExtra("cz.adewzen.prstatus.selectedParkId", c.get("parkid"));
-
                 startActivity(intent);
             }
         });
@@ -83,9 +89,51 @@ public class MainActivity extends AppCompatActivity {
     }
 
     @Override
+    protected void onStop() {
+        super.onStop();
+
+        save_settings(parkoviste);
+    }
+
+    private void save_settings(HashMap<String, Parkoviste> parkoviste) {
+
+        Context context = this.getApplicationContext();
+        SharedPreferences sharedPref = context.getSharedPreferences(
+                getString(R.string.preference_file_key), Context.MODE_PRIVATE);
+
+        SharedPreferences.Editor edit = sharedPref.edit();
+        edit.clear();
+        for (String parkId : parkoviste.keySet()) {
+            Parkoviste  park = MainActivity.parkoviste.get(parkId);
+            if (park.notify) {
+                edit.putBoolean(park.parkId, park.notify);
+                edit.putInt(park.parkId + "_limit", park.limit);
+                edit.putString(park.parkId + "_limit_type", park.limitType);
+            }
+
+        }
+    }
+
+    private void load_settings(HashMap<String, Parkoviste> parkoviste) {
+        Context context = this.getApplicationContext();
+        SharedPreferences sharedPref = context.getSharedPreferences(
+                getString(R.string.preference_file_key), Context.MODE_PRIVATE);
+
+        for (String parkId : parkoviste.keySet()) {
+            Parkoviste  park = MainActivity.parkoviste.get(parkId);
+            if (sharedPref.getBoolean(park.parkId, false)) {
+                park.notify = true;
+                park.limit = sharedPref.getInt(park.parkId + "_limit",10);
+                park.limitType = sharedPref.getString(park.parkId + "_limit_type","procenta");
+            };
+
+        }
+    }
+
+    @Override
     protected void onRestart(){
         super.onRestart();
-        new GetData().execute();
+        //new GetData().execute();
     }
 
     @Override
@@ -97,12 +145,6 @@ public class MainActivity extends AppCompatActivity {
                 intent = new Intent(this.getApplicationContext(), oAplikaci.class);
 
                 startActivity(intent);
-                return true;
-            case R.id.Notifikace:
-                //TODO: hodne veci
-                intent = new Intent(this.getApplicationContext(), NotifikaceAktivity.class);
-                startActivity(intent);
-                ;
                 return true;
             case R.id.Nastaveni:
                 intent = new Intent(this.getApplicationContext(), NastaveniActivity.class);
@@ -139,7 +181,8 @@ public class MainActivity extends AppCompatActivity {
 
             // prepare the list of all records
             List<HashMap<String, String>> fillMaps = new ArrayList<HashMap<String, String>>();
-            for(Parkoviste park : parkoviste) {
+            for (String parkId : parkoviste.keySet()) {
+                Parkoviste  park = MainActivity.parkoviste.get(parkId);
                 if (park.isPr) {
                     HashMap<String, String> map = new HashMap<String, String>();
 
@@ -172,11 +215,15 @@ public class MainActivity extends AppCompatActivity {
 
                 JSONArray park_array = jsonObj.getJSONArray("results");
 
-                parkoviste.clear();
+                //parkoviste.clear();
 
                 for (int i = 0; i < park_array.length(); i++) {
                     JSONObject c = park_array.getJSONObject(i);
-                    Parkoviste park = new Parkoviste();
+                    String parkId = c.getString("parkId");
+                    Parkoviste park;
+                    if ((park = MainActivity.parkoviste.get(parkId)) == null) {
+                        park = new Parkoviste();
+                    }
                     Log.i("parkoviste",c.getString("name"));
                     park.name=c.getString("name");
                     Log.i("totalNumOfPlaces","'"+c.getString("totalNumOfPlaces")+"'");
@@ -192,7 +239,7 @@ public class MainActivity extends AppCompatActivity {
                     park.lat = c.getString("lat");
                     park.parkId = c.getString("parkId");
 
-                    parkoviste.add(park);
+                    parkoviste.put(park.parkId,park);
                 }
 
             } catch (IOException e) {

@@ -26,10 +26,14 @@
             android:name=".NastaveniActivity"
             android:parentActivityName=".MainActivity" />
         <activity
-            android:name=".NotifikaceAktivity"
+            android:name=".ParkDetailActivity"
             android:parentActivityName=".MainActivity" />
-        <activity android:name=".ParkDetailActivity"
-            android:parentActivityName=".MainActivity" ></activity>
+        <activity android:name=".NastaveniNotifikaceActivity" />
+
+        <service
+            android:name=".GetDataService"
+            android:enabled="true"
+            android:exported="true"></service>
     </application>
 
 </manifest>

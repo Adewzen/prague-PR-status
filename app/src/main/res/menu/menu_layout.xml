@@ -2,8 +2,6 @@
 <menu xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:id="@+id/Nastaveni"
         android:title="@string/Nastaveni" />
-    <item android:id="@+id/Notifikace"
-        android:title="@string/Notifikace" />
     <item android:id="@+id/oAplikaci"
         android:title="@string/oAplikaci" />
 

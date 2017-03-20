@@ -15,5 +15,10 @@ public class Parkoviste {
     public String lng;
     public String parkId;
 
+    public boolean notify = false;
+    public int limit = 10;
+    public String limitType = "procenta";
+
+
 
 }
