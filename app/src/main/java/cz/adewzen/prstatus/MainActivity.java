@@ -30,6 +30,7 @@ import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 
@@ -41,10 +42,12 @@ public class MainActivity extends AppCompatActivity {
     private ListView lv;
 
     public static HashMap<String, Parkoviste>  parkoviste = new HashMap<String, Parkoviste>();
-    //private static  ArrayList<HashMap<String,String> list = new ArrayList<Parkoviste>();
+
     ArrayList<HashMap<String, String>> list;
 
-    private static GetData getData;
+    private static Date lastUpdate = null;
+
+    public static final Object sharedLock = new Object();
 
     private static Context context;
 
@@ -64,14 +67,30 @@ public class MainActivity extends AppCompatActivity {
 
         lv = (ListView) findViewById(R.id.list);
 
-        new GetData().execute();
+        Log.i("Main","Starting Get Data");
 
-        Intent mServiceIntent = new Intent(this.getApplicationContext(), GetDataService.class);
-        getAppContext().startActivity(mServiceIntent);
+        pDialog = new ProgressDialog(MainActivity.this);
+        pDialog.setMessage("Načítám data...");
+        pDialog.setCancelable(false);
+        pDialog.show();
 
+        getDataFromUrl();
+
+        pDialog.dismiss();
+
+        pDialog.dismiss();
+
+        if (parkoviste.size()<1) {
+            Log.e("Main","List nenacten");
+            //TODO: nejakou chybu
+            return;
+        }
 
 
         load_settings(parkoviste);
+        Log.d("parkoviste size:",String.valueOf(parkoviste.size()));
+
+        displayData(lv);
 
         lv.setClickable(true);
         lv.setOnItemClickListener(new AdapterView.OnItemClickListener() {
@@ -155,104 +174,6 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    private class GetData extends AsyncTask<Void, Void, Void> {
-
-        @Override
-        protected void onPreExecute() {
-            super.onPreExecute();
-            // Showing progress dialog
-            pDialog = new ProgressDialog(MainActivity.this);
-            pDialog.setMessage("Please wait...");
-            pDialog.setCancelable(false);
-            pDialog.show();
-
-        }
-
-        @Override
-        protected void onPostExecute(Void result) {
-            super.onPostExecute(result);
-            // Dismiss the progress dialog
-            if (pDialog.isShowing())
-                pDialog.dismiss();
-
-
-            String[] from = new String[] {"name", "obsazeni", "parkid"};
-            int[] to = new int[] { R.id.name, R.id.obsazeni,R.id.parkid};
-
-            // prepare the list of all records
-            List<HashMap<String, String>> fillMaps = new ArrayList<HashMap<String, String>>();
-            for (String parkId : parkoviste.keySet()) {
-                Parkoviste  park = MainActivity.parkoviste.get(parkId);
-                if (park.isPr) {
-                    HashMap<String, String> map = new HashMap<String, String>();
-
-                    map.put("name", park.name);
-                    map.put("parkid", park.parkId);
-                    map.put("obsazeni", Integer.toString(park.capacity - park.obsazeno) + "/" + Integer.toString(park.capacity));
-
-                    fillMaps.add(map);
-                }
-            }
-
-            // fill in the grid_item layout
-            SimpleAdapter adapter = new SimpleAdapter(MainActivity.this, fillMaps, R.layout.list_item, from, to);
-
-            lv.setAdapter(adapter);
-        }
-
-        @Override
-        protected Void doInBackground(Void... params) {
-
-            try {
-                URL url = new URL("https://www.tsk-praha.cz/tskexport/json/parkoviste");
-
-                HttpURLConnection httpClient =  (HttpURLConnection) url.openConnection();
-
-                InputStream in = new BufferedInputStream(httpClient.getInputStream());
-                String response = convertStreamToString(in);
-
-                JSONObject jsonObj = new JSONObject(response);
-
-                JSONArray park_array = jsonObj.getJSONArray("results");
-
-                //parkoviste.clear();
-
-                for (int i = 0; i < park_array.length(); i++) {
-                    JSONObject c = park_array.getJSONObject(i);
-                    String parkId = c.getString("parkId");
-                    Parkoviste park;
-                    if ((park = MainActivity.parkoviste.get(parkId)) == null) {
-                        park = new Parkoviste();
-                    }
-                    Log.i("parkoviste",c.getString("name"));
-                    park.name=c.getString("name");
-                    Log.i("totalNumOfPlaces","'"+c.getString("totalNumOfPlaces")+"'");
-                    park.capacity=Integer.parseInt(c.getString("totalNumOfPlaces"));
-                    Log.i("numOfTakenPlaces","'"+c.getString("numOfTakenPlaces")+"'");
-                    park.obsazeno=Integer.parseInt(c.getString("numOfTakenPlaces"));
-                    park.free=Integer.parseInt(c.getString("numOfFreePlaces"));
-                    if (c.getString("pr").equals("true")) {
-                        park.isPr = true;
-                    }
-                    park.lastUpdateDate = c.getString("lastUpdateDate");
-                    park.lng = c.getString("lng");
-                    park.lat = c.getString("lat");
-                    park.parkId = c.getString("parkId");
-
-                    parkoviste.put(park.parkId,park);
-                }
-
-            } catch (IOException e) {
-                e.printStackTrace();
-                return null;
-            } catch (JSONException e) {
-                e.printStackTrace();
-                return null;
-            }
-            return null;
-        }
-    }
-
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
         super.onCreateOptionsMenu(menu);
@@ -263,9 +184,80 @@ public class MainActivity extends AppCompatActivity {
         return true;
     }
 
+    private void displayData(ListView lv) {
+        Log.i("Displaying Data","");
+        String[] from = new String[] {"name", "obsazeni", "parkid"};
+        int[] to = new int[] { R.id.name, R.id.obsazeni,R.id.parkid};
 
+        // prepare the list of all records
+        List<HashMap<String, String>> fillMaps = new ArrayList<HashMap<String, String>>();
+        for (String parkId : parkoviste.keySet()) {
+            Parkoviste  park = MainActivity.parkoviste.get(parkId);
+            if (park.isPr) {
+                HashMap<String, String> map = new HashMap<String, String>();
 
-    private String convertStreamToString(InputStream is) {
+                map.put("name", park.name);
+                map.put("parkid", park.parkId);
+                map.put("obsazeni", Integer.toString(park.capacity - park.obsazeno) + "/" + Integer.toString(park.capacity));
+
+                fillMaps.add(map);
+            }
+        }
+
+        // fill in the grid_item layout
+        SimpleAdapter adapter = new SimpleAdapter(MainActivity.this, fillMaps, R.layout.list_item, from, to);
+        Log.d("adapter size:", String.valueOf(adapter.getCount()));
+        lv.setAdapter(adapter);
+
+    }
+
+    public static void getDataFromUrl() {
+        try {
+            URL url = new URL("https://www.tsk-praha.cz/tskexport/json/parkoviste");
+
+            HttpURLConnection httpClient =  (HttpURLConnection) url.openConnection();
+
+            InputStream in = new BufferedInputStream(httpClient.getInputStream());
+            String response = convertStreamToString(in);
+
+            JSONObject jsonObj = new JSONObject(response);
+
+            JSONArray park_array = jsonObj.getJSONArray("results");
+
+            for (int i = 0; i < park_array.length(); i++) {
+                JSONObject c = park_array.getJSONObject(i);
+                String parkId = c.getString("parkId");
+                Parkoviste park;
+                if ((park = MainActivity.parkoviste.get(parkId)) == null) {
+                    park = new Parkoviste();
+                }
+                Log.i("parkoviste", c.getString("name"));
+                park.name = c.getString("name");
+                Log.i("totalNumOfPlaces", "'" + c.getString("totalNumOfPlaces") + "'");
+                park.capacity = Integer.parseInt(c.getString("totalNumOfPlaces"));
+                Log.i("numOfTakenPlaces", "'" + c.getString("numOfTakenPlaces") + "'");
+                park.obsazeno = Integer.parseInt(c.getString("numOfTakenPlaces"));
+                park.free = Integer.parseInt(c.getString("numOfFreePlaces"));
+                if (c.getString("pr").equals("true")) {
+                    park.isPr = true;
+                }
+                park.lastUpdateDate = c.getString("lastUpdateDate");
+                park.lng = c.getString("lng");
+                park.lat = c.getString("lat");
+                park.parkId = c.getString("parkId");
+
+                parkoviste.put(park.parkId, park);
+            }
+        MainActivity.lastUpdate= new Date();
+        Log.i("lastUpdate = ", MainActivity.lastUpdate.toLocaleString());
+
+        } catch (IOException | JSONException e) {
+            Log.e("exception",e.getLocalizedMessage());
+            e.printStackTrace();
+        }
+    }
+
+    private static String convertStreamToString(InputStream is) {
         BufferedReader reader = new BufferedReader(new InputStreamReader(is));
         StringBuilder sb = new StringBuilder();
 
